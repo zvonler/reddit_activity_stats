@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+
+from zxv.reddit import Authentication, ActivityDb
+import argparse
+import datetime
+import logging as log
+
+_help_epilog="""
+Updates the activity database for a given subreddit's last day of activity.
+"""
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="daily_activity",
+        description="Fetches daily activity for a subreddit",
+        epilog=_help_epilog
+    )
+    parser.add_argument("--time-window", "-w", type=int, help="Ignore posts older than (now - time-window) seconds", default=86400)
+    parser.add_argument("subreddit", type=str, nargs="+", help="Subreddit(s) to fetch activity for")
+
+    args = parser.parse_args()
+
+    auth = Authentication()  # Load from default filename
+
+    reddit = auth.read_only_reddit()
+
+    now = datetime.datetime.now().timestamp()
+
+    with ActivityDb("activity.db", readonly=False) as db:
+        for subreddit in args.subreddit:
+            subreddit_id = db.get_subreddit_id(subreddit)
+            found_older = False  # Whether we found any submissions older than the time window
+            for s in reddit.subreddit(subreddit).new(limit=1000):
+                if now - s.created > args.time_window:
+                    found_older = True
+                    break
+                stmt = str("INSERT OR REPLACE INTO submissions "
+                    "(subreddit_id, permalink, created, num_comments, score, upvote_ratio) "
+                    "VALUES (?, ?, ?, ?, ?, ?)")
+                values = (subreddit_id, s.permalink, s.created, s.num_comments, s.score, s.upvote_ratio)
+                db.execute_statement(stmt, values)
+            db.commit()
+
+            if not found_older:
+                log.warning(f"Request for {subreddit} did not return any submissions earlier than time window")
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())

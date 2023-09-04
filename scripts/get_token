@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+
+from zxv.reddit import Authentication
+from subprocess import check_output
+
+def main():
+    auth = Authentication()
+    cmd = ["curl", "-X", "POST",
+          "-d", f"grant_type=password&username={auth.username}&password={auth.password}",
+          "--user", f"{auth.client_id}:{auth.secret}",
+          "https://www.reddit.com/api/v1/access_token"]
+    print(check_output(cmd, text=True))
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
