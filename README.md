@@ -17,7 +17,7 @@ Create a secrets.txt file containing the values from Reddit:
 ```
 
 Build database of subreddit activity with `venv/bin/python3 scripts/daily_activity <subreddit>`.
-Plot subreddit activity with `venv/bin/python3 scripts/posts_per_hour <subreddit>...".
+Plot subreddit activity with `venv/bin/python3 scripts/posts_per_hour <subreddit>...`.
 
 With a secrets.txt file in the current directory, the following commands should show a plot:
 ```
