@@ -32,6 +32,9 @@ class ActivityDb:
         self._db_fn = db_fn
         self._readonly = readonly
         self._conn = None
+        self._subreddits_table = SubredditsTable()
+        self._submissions_table = SubmissionsTable()
+        self._redditors_table = RedditorsTable()
 
     def __enter__(self):
         if self._readonly:
@@ -56,16 +59,11 @@ class ActivityDb:
     def commit(self):
         self._conn.commit()
 
-    def get_subreddit_id(self, subreddit):
-        stmt = f"SELECT id FROM subreddits WHERE name = '{subreddit}'"
-        results = self._conn.execute(stmt).fetchone()
-        if results is not None:
-            subreddit_id = results[0]
-        else:
-            stmt = f"INSERT INTO subreddits (name) VALUES ('{subreddit}') RETURNING id"
-            subreddit_id = self._conn.execute(stmt).fetchone()[0]
-            self._conn.commit()
-        return subreddit_id
+    def get_subreddit_id(self, name):
+        return self._subreddits_table.get_subreddit_id(name, self._conn)
+
+    def get_redditor_id(self, redditor):
+        return self._redditors_table.get_redditor_id(redditor, self._conn)
 
     def subreddit_posts_per_hour(self, subreddit, begin_date, end_date):
         stmt = str(
@@ -110,24 +108,76 @@ class ActivityDb:
         return df
 
     def _create_tables(self):
-        tables = {
-            "subreddits": [
-               "id INTEGER PRIMARY KEY",
-               "name TEXT NOT NULL",
-            ],
-            "submissions": [
-                "id INTEGER PRIMARY KEY",
-                "subreddit_id INTEGER NOT NULL",
-                "permalink TEXT NOT NULL",
-                "created INTEGER",
-                "num_comments INTEGER",
-                "score INTEGER",
-                "upvote_ratio NUMERIC",
-            ],
-        }
+        self._subreddits_table.create(self._conn)
+        self._submissions_table.create(self._conn)
+        self._redditors_table.create(self._conn)
+        self._conn.commit()
 
-        for (table, columns) in tables.items():
-            stmt = f"CREATE TABLE {table} ("
-            stmt += ", ".join(columns)
-            stmt += ")"
-            self._conn.execute(stmt)
+class DbTable:
+    def __init__(self, name):
+        self._name = name
+        self._columns = []
+
+    def create(self, conn):
+        stmt = f"CREATE TABLE {self._name} ("
+        stmt += ", ".join(self._columns)
+        stmt += ")"
+        conn.execute(stmt)
+
+class SubmissionsTable(DbTable):
+    def __init__(self):
+        super().__init__("submissions")
+        self._columns.extend([
+            "id INTEGER PRIMARY KEY",
+            "subreddit_id INTEGER NOT NULL",
+            "author_id INTEGER NOT NULL",
+            "permalink TEXT NOT NULL",
+            "created INTEGER",
+            "num_comments INTEGER",
+            "score INTEGER",
+            "upvote_ratio NUMERIC",
+        ])
+
+class RedditorsTable(DbTable):
+    def __init__(self):
+        super().__init__("redditors")
+        self._columns.extend([
+            "id INTEGER PRIMARY KEY",
+            "name TEXT NOT NULL",
+            "created INTEGER"
+        ])
+        self._id_by_name = {}
+
+    def get_redditor_id(self, redditor, conn):
+        if redditor.name not in self._id_by_name:
+            stmt = f"SELECT id FROM {self._name} WHERE name = '{redditor.name}'"
+            results = conn.execute(stmt).fetchone()
+            if results is not None:
+                redditor_id = results[0]
+            else:
+                stmt = str(f"INSERT INTO {self._name} (name, created) VALUES "
+                            f"('{redditor.name}', {redditor.created}) RETURNING id")
+                redditor_id = conn.execute(stmt).fetchone()[0]
+            self._id_by_name[redditor.name] = redditor_id
+        return self._id_by_name[redditor.name]
+
+class SubredditsTable(DbTable):
+    def __init__(self):
+        super().__init__("subreddits")
+        self._columns.extend([
+           "id INTEGER PRIMARY KEY",
+           "name TEXT NOT NULL",
+        ])
+        self._id_by_name = {}
+
+    def get_subreddit_id(self, name, conn):
+        if name not in self._id_by_name:
+            stmt = f"SELECT id FROM subreddits WHERE name = '{name}'"
+            results = conn.execute(stmt).fetchone()
+            if results is not None:
+                subreddit_id = results[0]
+            else:
+                stmt = f"INSERT INTO subreddits (name) VALUES ('{name}') RETURNING id"
+                subreddit_id = conn.execute(stmt).fetchone()[0]
+            self._id_by_name[name] = subreddit_id
+        return self._id_by_name[name]

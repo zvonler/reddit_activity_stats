@@ -31,13 +31,14 @@ def main():
             subreddit_id = db.get_subreddit_id(subreddit)
             found_older = False  # Whether we found any submissions older than the time window
             for s in reddit.subreddit(subreddit).new(limit=1000):
+                redditor_id = db.get_redditor_id(s.author)
                 if now - s.created > args.time_window:
                     found_older = True
                     break
                 stmt = str("INSERT OR REPLACE INTO submissions "
-                    "(subreddit_id, permalink, created, num_comments, score, upvote_ratio) "
-                    "VALUES (?, ?, ?, ?, ?, ?)")
-                values = (subreddit_id, s.permalink, s.created, s.num_comments, s.score, s.upvote_ratio)
+                    "(subreddit_id, author_id, permalink, created, num_comments, score, upvote_ratio) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)")
+                values = (subreddit_id, redditor_id, s.permalink, s.created, s.num_comments, s.score, s.upvote_ratio)
                 db.execute_statement(stmt, values)
             db.commit()
 
